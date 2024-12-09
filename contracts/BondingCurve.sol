@@ -13,7 +13,9 @@ contract BondingCurve {
 
     // Parameters for the bonding curve
     uint256 public constant INITIAL_PRICE = 1 ether; // Initial price for the first token
-    uint256 public constant SLOPE = 1 ether; // Price increase per additional token minted
+    uint256 public constant SLOPE = 0.1 ether; // Price increase per additional token minted
+
+    mapping(address => uint256) private balances;
 
     event TokensPurchased(
         address indexed buyer,
@@ -34,7 +36,7 @@ contract BondingCurve {
         require(amountToSpend > 0, "Amount must be greater than 0");
 
         // Calculate how many tokens can be bought based on the current price
-        uint256 tokensToReceive = calculateTokensReceived(amountToSpend);
+        uint256 tokensToReceive = calculateTokenReceived(amountToSpend);
 
         reserveBalance += amountToSpend;
         totalSupply += tokensToReceive;
@@ -47,16 +49,10 @@ contract BondingCurve {
 
     function sellTokens(uint256 amountToSell) external {
         require(amountToSell > 0, "Amount must be greater than 0");
-        require(
-            IERC20(token).balanceOf(msg.sender) >= amountToSell,
-            "Insufficient token balance"
-        );
+        require(balances[msg.sender] >= amountToSell, "Insufficient balance");
 
         uint256 paymentAmount = calculatePaymentReceived(amountToSell);
-        require(
-            paymentAmount <= reserveBalance,
-            "Not enough liquidity in the pool"
-        );
+        require(paymentAmount <= reserveBalance, "Not enough liquidity");
 
         reserveBalance -= paymentAmount;
         totalSupply -= amountToSell;
@@ -67,25 +63,38 @@ contract BondingCurve {
         emit TokensSold(msg.sender, amountToSell, paymentAmount);
     }
 
-    function calculateTokensReceived(
+    function calculateTokenReceived(
         uint256 amountSpent
     ) public view returns (uint256) {
-        return (amountSpent * SLOPE) / INITIAL_PRICE; // Simplified calculation based on slope
+        uint256 tokensReceived = 0;
+        uint256 currentPrice = INITIAL_PRICE;
+
+        while (amountSpent >= currentPrice) {
+            amountSpent -= currentPrice;
+            tokensReceived++;
+            currentPrice += SLOPE;
+        }
+        return tokensReceived;
     }
 
     function calculatePaymentReceived(
         uint256 amountSold
     ) public view returns (uint256) {
-        return
-            (amountSold * INITIAL_PRICE) +
-            ((SLOPE * (amountSold * (amountSold + 1))) / 2); // Simplified calculation based on slope
+        uint256 paymentReceived = 0;
+        uint256 currentPrice = INITIAL_PRICE;
+
+        for (uint256 i = 0; i < amountSold; i++) {
+            paymentReceived += currentPrice;
+            currentPrice += SLOPE;
+        }
+        return paymentReceived;
     }
 
     function _mint(address account, uint256 amount) internal {
-        // Implement minting logic here (e.g., updating balances)
+        balances[account] += amount;
     }
 
     function _burn(address account, uint256 amount) internal {
-        // Implement burning logic here (e.g., updating balances)
+        balances[account] -= amount;
     }
 }
